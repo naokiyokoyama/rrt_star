@@ -67,7 +67,7 @@ for scene_id, episodes in scene_eps.items():
             scene_name = episode["scene_id"]
             goal_position = episode["goals"][0]["position"]
 
-            start_heading = quat_to_rad(np.quaternion(*start_quaternion))-np.pi/2
+            start_heading = quat_to_rad(np.quaternion(*start_quaternion))
 
             rrt_unicycle = RRTStarUnicycle(
                 pathfinder=sim.pathfinder,

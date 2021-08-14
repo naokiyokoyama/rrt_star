@@ -35,7 +35,7 @@ def heading_to_quaternion(heading):
     quat = qt.from_euler_angles([heading + np.pi / 2, 0, 0, 0])
     quat = qt.as_float_array(quat)
     quat = [quat[1], -quat[3], quat[2], quat[0]]
-    quat = np.quaternion(*quat)
+    quat = qt.quaternion(*quat)
     return mn.Quaternion(quat.imag, quat.real)
 
 def quat_to_rad(quat):
@@ -43,4 +43,4 @@ def quat_to_rad(quat):
         quat.inverse(), np.array([0, 0, -1])
     )
     phi = np.arctan2(heading_vector[0], -heading_vector[2])
-    return phi
+    return phi - np.pi/2

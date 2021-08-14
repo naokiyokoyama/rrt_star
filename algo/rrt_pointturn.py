@@ -8,7 +8,6 @@ from collections import defaultdict
 
 from .rrt_unicycle import RRTStarUnicycle
 
-
 class RRTStarPointTurn(RRTStarUnicycle):
     def __init__(
         self,

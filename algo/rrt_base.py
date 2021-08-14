@@ -1,5 +1,6 @@
 from os import path as osp
 import os
+import cv2
 import glob
 import json
 import numpy as np
@@ -9,27 +10,7 @@ from collections import defaultdict
 
 from .utils import PointHeading
 
-
-# class RRTStarSim(RRTStarBase):
-#     def __init__(
-#         self,
-#         pathfinder,
-#         max_linear_velocity,
-#         max_angular_velocity,
-#         near_threshold,
-#         max_distance,
-#         directory=None,
-#     ):
-#         super().__init__(
-#             max_linear_velocity=max_linear_velocity,
-#             max_angular_velocity=max_angular_velocity,
-#             near_threshold=near_threshold,
-#             max_distance=max_distance,
-#             directory=directory,
-#         )
-#
-#         self._pathfinder = pathfinder
-
+from habitat_sim.nav import ShortestPath
 
 class RRTStarBase:
     def __init__(
@@ -86,6 +67,18 @@ class RRTStarBase:
 
     def _euclid_2D(self, p1, p2):
         return np.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2)
+
+    def _max_point(self, p1, p2):
+        euclid_dist = self._euclid_2D(p1, p2)
+        if euclid_dist <= self._max_distance:
+            return p2, False
+
+        new_x = p1.x + (p2.x - p1.x * self._max_distance / euclid_dist)
+        new_y = p1.y + (p2.y - p1.y * self._max_distance / euclid_dist)
+        new_z = p1.z
+        p_new = PointHeading((new_x, new_z, new_y))  # MAY RETURN non navigable point
+
+        return p_new, True
 
     def _get_near_pts(self, pt):
         ret = []
@@ -304,10 +297,11 @@ class RRTStarBase:
                 sample_random = np.random.rand() < 0.2
                 found_valid_new_node = False
                 while not found_valid_new_node:
-                    if sample_random:
-                        rand_pt = PointHeading(
-                            self._pathfinder.get_random_navigable_point()
-                        )
+                    if (
+                        sample_random
+                        or not self._shortest_path_points and self._best_goal_node is None
+                    ):
+                        rand_pt = self._sample_random_point()
                         if (
                             abs(rand_pt.z - self._start.z) > 0.8
                         ):  # Must be on same plane as episode.
@@ -320,7 +314,6 @@ class RRTStarBase:
                             found_valid_new_node = True
                     else:
                         if self._best_goal_node is None:
-                            # sample_random = True; continue
                             best_path_pt = random.choice(self._shortest_path_points)
                         else:
                             best_path = self._get_path_to_start(self._best_goal_node)
@@ -334,7 +327,7 @@ class RRTStarBase:
                         y = best_path_pt.y + rand_r * np.sin(rand_theta)
                         z = best_path_pt.z
                         rand_pt = PointHeading(
-                            self._pathfinder.snap_point([x, z, y])
+                            self._snap_point([x, z, y])
                         )  # MAY RETURN NAN NAN NAN
 
                         if not self._is_navigable(rand_pt):
@@ -457,3 +450,108 @@ class RRTStarBase:
                 #     self.times = defaultdict(list)
 
                 success = True
+
+class RRTStarSim(RRTStarBase):
+    def __init__(
+        self,
+        pathfinder,
+        max_linear_velocity,
+        max_angular_velocity,
+        near_threshold,
+        max_distance,
+        directory=None,
+    ):
+        super().__init__(
+            max_linear_velocity=max_linear_velocity,
+            max_angular_velocity=max_angular_velocity,
+            near_threshold=near_threshold,
+            max_distance=max_distance,
+            directory=directory,
+        )
+
+        self._pathfinder = pathfinder
+
+    def _is_navigable(self, pt, max_y_delta=0.5):
+        return self._pathfinder.is_navigable(pt.as_pos(), max_y_delta=max_y_delta)
+
+    def _get_shortest_path_points(self):
+        sp = ShortestPath()
+        sp.requested_start = self._start.as_pos()
+        sp.requested_end = self._goal.as_pos()
+        self._pathfinder.find_path(sp)
+        self._shortest_path_points = [PointHeading(i) for i in sp.points]
+
+    def _max_point(self, p1, p2):
+        p_new, moved = super()._max_point(p1, p2)
+        if not moved:
+            return p_new, moved
+
+        new_x, new_y, new_z = p_new.as_pos()
+        p_new = PointHeading(
+            self._pathfinder.snap_point([new_x, new_z, new_y])
+        )  # MAY RETURN NAN NAN NAN
+
+        return p_new, True
+
+    def _sample_random_point(self):
+        return PointHeading(
+            self._pathfinder.get_random_navigable_point()
+        )
+
+    def _snap_point(self, xzy):
+        return self._pathfinder.snap_point(xzy)
+
+class RRTStarPNG(RRTStarBase):
+    def __init__(
+        self,
+        pathfinder,
+        max_linear_velocity,
+        max_angular_velocity,
+        near_threshold,
+        max_distance,
+        directory=None,
+    ):
+        super().__init__(
+            max_linear_velocity=max_linear_velocity,
+            max_angular_velocity=max_angular_velocity,
+            near_threshold=near_threshold,
+            max_distance=max_distance,
+            directory=directory,
+        )
+
+        img = cv2.imread(pathfinder, cv2.IMREAD_UNCHANGED)
+        self._map = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+        self._map[self._map > 240] = 255
+        self._map[self._map <= 240] = 0
+        blur_radius = int(round(agent_radius / meters_per_pixel))
+        self._map = cv2.blur(self._map, (blur_radius, blur_radius))
+        self._map_height = float(img.shape[0]) * meters_per_pixel
+        self._map_width = float(img.shape[1]) * meters_per_pixel
+        self._top_down_img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        self._scale_x = lambda x: int(x / meters_per_pixel)
+        self._scale_y = lambda y: int((y) / meters_per_pixel)
+
+        self.x_min = 0
+        self.y_min = 0
+
+    def _is_navigable(self, pt):
+        px = self._scale_x(pt.x)
+        py = self._scale_x(pt.y)
+
+        try:
+            return self._map[py, px] == 255
+        except IndexError:
+            return False
+
+    def _sample_random_point(self):
+        x_rand = np.random.rand() * self._map_width
+        y_rand = np.random.rand() * self._map_height
+        return PointHeading((x_rand, 0, y_rand))
+
+    def _snap_point(self, xzy):
+        # No z-snapping required for flat PNG maps
+        return xzy
+
+    def _get_shortest_path_points(self):
+        # No shortest path can be found for PNG maps
+        self._shortest_path_points = []
