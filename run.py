@@ -75,7 +75,6 @@ for scene_id, episodes in scene_eps.items():
                 max_angular_velocity=args.max_angular_velocity,
                 near_threshold=args.near_threshold,
                 max_distance=args.max_distance,
-                goal_minimum_distance=args.goal_minimum_distance,
                 critical_angle_lookup=None,
                 directory=args.out_dir,
             )
