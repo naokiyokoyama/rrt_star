@@ -3,11 +3,12 @@ import gzip
 import habitat_sim
 import json
 import numpy as np
+import quaternion as qt
 
 from collections import defaultdict
 from os import path as osp
 
-from algo.rrt_unicycle import RRTStarUnicycle
+from algo.rrt_base import RRTStar
 from algo.utils import quat_to_rad
 
 parser = argparse.ArgumentParser()
@@ -67,19 +68,20 @@ for scene_id, episodes in scene_eps.items():
             scene_name = episode["scene_id"]
             goal_position = episode["goals"][0]["position"]
 
-            start_heading = quat_to_rad(np.quaternion(*start_quaternion))
+            start_heading = quat_to_rad(qt.quaternion(*start_quaternion))
 
-            rrt_unicycle = RRTStarUnicycle(
+            rrt = RRTStar(
+                # 'unicycle',
+                'pointturn',
                 pathfinder=sim.pathfinder,
                 max_linear_velocity=args.max_linear_velocity,
                 max_angular_velocity=args.max_angular_velocity,
                 near_threshold=args.near_threshold,
                 max_distance=args.max_distance,
-                critical_angle_lookup=None,
                 directory=args.out_dir,
             )
 
-            rrt_unicycle.generate_tree(
+            rrt.generate_tree(
                 start_position=start_position,
                 start_heading=start_heading,
                 goal_position=goal_position,

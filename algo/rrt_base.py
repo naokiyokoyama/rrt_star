@@ -8,9 +8,17 @@ import random
 import tqdm
 from collections import defaultdict
 
+from .rrt_unicycle import RRTStarUnicycleSelect
+from .rrt_pointturn import RRTStarPTSelect
 from .utils import PointHeading
 
 from habitat_sim.nav import ShortestPath
+
+RRTStarMapping = {
+    "unicycle": RRTStarUnicycleSelect,
+    "pointturn": RRTStarPTSelect,
+}
+
 
 class RRTStarBase:
     def __init__(
@@ -131,6 +139,17 @@ class RRTStarBase:
 
         return min(neighbors, key=lambda x: self._euclid_2D(pt, x))
 
+    def _cost_from_start(self, pt):
+        path = self._get_path_to_start(pt)
+        cost = 0
+        for parent, child in zip(path[:-1], path[1:]):
+            if child not in self._cost_from_parent:
+                self._cost_from_parent[child] = self._cost_from_to(
+                    parent, child, consider_end_heading=True
+                )
+            cost += self._cost_from_parent[child]
+        return cost
+
     def _load_tree_from_json(self, json_path=None):
         """
         Attempts to recover the latest existing tree from the json directory,
@@ -187,6 +206,17 @@ class RRTStarBase:
             return []
         return self._get_path_to_start(self._best_goal_node) + [self._goal]
 
+    def make_path_finer(self, path, precision=2, resolution=0.01):
+        all_pts = []
+        for pt, new_pt in zip(path[:-1], path[1:]):
+            all_pts.append(pt)
+            all_pts += self._get_intermediate_pts(
+                pt, new_pt, precision=precision, resolution=resolution
+            )
+            all_pts.append(new_pt)
+
+        return all_pts
+
     def add_to_grid_hash(self, pt):
         i = int((pt.x - self.x_min) // self._near_threshold)
         j = int((pt.y - self.y_min) // self._near_threshold)
@@ -233,15 +263,6 @@ class RRTStarBase:
 
         return string_tree
 
-    def generate_topdown_img(self, meters_per_pixel=0.01):
-        y = self._start.as_pos()[1]
-        topdown = self._pathfinder.get_topdown_view(meters_per_pixel, y)
-        topdown_bgr = np.zeros((*topdown.shape, 3), dtype=np.uint8)
-        topdown_bgr[topdown == 0] = (255, 255, 255)
-        topdown_bgr[topdown == 1] = (100, 100, 100)
-
-        return topdown_bgr
-
     def generate_tree(
         self,
         start_position,
@@ -282,7 +303,6 @@ class RRTStarBase:
         self._load_tree_from_json(json_path=json_path)
 
         for iteration in tqdm.trange(int(iterations + 1)):
-            # for iteration in range(int(iterations+1)):
             if iteration < self._start_iteration:
                 continue
 
@@ -299,7 +319,8 @@ class RRTStarBase:
                 while not found_valid_new_node:
                     if (
                         sample_random
-                        or not self._shortest_path_points and self._best_goal_node is None
+                        or not self._shortest_path_points
+                        and self._best_goal_node is None
                     ):
                         rand_pt = self._sample_random_point()
                         if (
@@ -423,11 +444,11 @@ class RRTStarBase:
                 ):
                     img_path = osp.join(
                         self._vis_dir,
-                        "{}_{}.png".format(iteration, osp.basename(self._vis_dir)),
+                        "{}_{}.png".format(iteration, osp.basename(self._directory)),
                     )
                     json_path = osp.join(
                         self._json_dir,
-                        "{}_{}.json".format(iteration, osp.basename(self._json_dir)),
+                        "{}_{}.json".format(iteration, osp.basename(self._directory)),
                     )
                     self._visualize_tree(save_path=img_path, show=visualize_on_screen)
                     string_tree = self._string_tree()
@@ -451,6 +472,175 @@ class RRTStarBase:
 
                 success = True
 
+    """
+    Visualization methods
+    """
+
+    def generate_topdown_img(self, meters_per_pixel=0.01):
+        y = self._start.as_pos()[1]
+        topdown = self._pathfinder.get_topdown_view(meters_per_pixel, y)
+        topdown_bgr = np.zeros((*topdown.shape, 3), dtype=np.uint8)
+        topdown_bgr[topdown == 0] = (255, 255, 255)
+        topdown_bgr[topdown == 1] = (100, 100, 100)
+
+        return topdown_bgr
+
+    def _draw_all_edges(self, img):
+        for node, node_parent in self.tree.items():
+            if node_parent is None:  # Start point has no parent
+                continue
+            fine_path = (
+                [node_parent]
+                + self._get_intermediate_pts(node_parent, node, resolution=0.01)
+                + [node]
+            )
+            for pt, next_pt in zip(fine_path[:-1], fine_path[1:]):
+                cv2.line(
+                    img,
+                    (self._scale_x(pt.x), self._scale_y(pt.y)),
+                    (self._scale_x(next_pt.x), self._scale_y(next_pt.y)),
+                    (0, 102, 255),
+                    1,
+                )
+
+        return img
+
+    def _draw_best_path(self, img, path):
+        if path is not None:
+            fine_path = self.make_path_finer(path)
+        else:
+            fine_path = self.make_path_finer(self._get_best_path())
+        for pt, next_pt in zip(fine_path[:-1], fine_path[1:]):
+            cv2.line(
+                img,
+                (self._scale_x(pt.x), self._scale_y(pt.y)),
+                (self._scale_x(next_pt.x), self._scale_y(next_pt.y)),
+                (0, 255, 0),
+                3,
+            )
+
+        return img
+
+    def _draw_start_pose(self, img):
+        start_x, start_y = self._scale_x(self._start.x), self._scale_y(self._start.y)
+        cv2.circle(img, (start_x, start_y), 8, (255, 192, 15), -1)
+        LINE_SIZE = 10
+        heading_end_pt = (
+            int(start_x + LINE_SIZE * np.cos(self._start.heading)),
+            int(start_y + LINE_SIZE * np.sin(self._start.heading)),
+        )
+        cv2.line(img, (start_x, start_y), heading_end_pt, (0, 0, 0), 3)
+
+        return img
+
+    def _draw_goal_point(self, img):
+        SQUARE_SIZE = 6
+        cv2.rectangle(
+            img,
+            (
+                self._scale_x(self._goal.x) - SQUARE_SIZE,
+                self._scale_y(self._goal.y) - SQUARE_SIZE,
+            ),
+            (
+                self._scale_x(self._goal.x) + SQUARE_SIZE,
+                self._scale_y(self._goal.y) + SQUARE_SIZE,
+            ),
+            (0, 0, 255),
+            -1,
+        )
+
+        return img
+
+    def _draw_shortest_path_waypoints(self, img):
+        if self._shortest_path_points is None:
+            self._get_shortest_path_points()
+        for i in self._shortest_path_points:
+            cv2.circle(
+                img,
+                (self._scale_x(i.x), self._scale_y(i.y)),
+                3,
+                (255, 192, 15),
+                -1,
+            )
+        return img
+
+    def _draw_fastest_path_waypoints(self, img, path):
+        if path is None:
+            path = self._get_best_path()[1:-1]
+        for i in path:
+            cv2.circle(
+                img,
+                (self._scale_x(i.x), self._scale_y(i.y)),
+                3,
+                (0, 0, 255),
+                -1,
+            )
+            LINE_SIZE = 8
+            heading_end_pt = (
+                int(self._scale_x(i.x) + LINE_SIZE * np.cos(i.heading)),
+                int(self._scale_y(i.y) + LINE_SIZE * np.sin(i.heading)),
+            )
+            cv2.line(
+                img,
+                (self._scale_x(i.x), self._scale_y(i.y)),
+                heading_end_pt,
+                (0, 0, 0),
+                1,
+            )
+
+        return img
+
+    def _generate_top_down(self, meters_per_pixel):
+        self._top_down_img = self.generate_topdown_img(
+            meters_per_pixel=meters_per_pixel
+        )
+
+        # Crop image to just valid points
+        mask = cv2.cvtColor(self._top_down_img, cv2.COLOR_BGR2GRAY)
+        mask[mask == 255] = 0
+        x, y, w, h = cv2.boundingRect(mask)
+        self._top_down_img = self._top_down_img[y : y + h, x : x + w]
+
+        # Determine scaling needed
+        self._scale_x = lambda x: int((x - self.x_min) / meters_per_pixel)
+        self._scale_y = lambda y: int((y - self.y_min) / meters_per_pixel)
+
+    def _visualize_tree(
+        self,
+        meters_per_pixel=0.01,
+        show=False,
+        path=None,  # Option to visualize another path
+        draw_all_edges=True,
+        save_path=None,
+    ):
+        """
+        Save and/or visualize the current tree and the best path found so far
+        """
+        if self._top_down_img is None:
+            self._generate_top_down(meters_per_pixel)
+
+        top_down_img = self._top_down_img.copy()
+
+        if draw_all_edges:
+            top_down_img = self._draw_all_edges(top_down_img)
+        top_down_img = self._draw_best_path(top_down_img, path)
+        top_down_img = self._draw_start_pose(top_down_img)
+        top_down_img = self._draw_goal_point(top_down_img)
+        top_down_img = self._draw_shortest_path_waypoints(top_down_img)
+        top_down_img = self._draw_fastest_path_waypoints(top_down_img, path)
+
+        # Display image on screen
+        if show:
+            cv2.imshow("top_down_img", top_down_img)
+            cv2.waitKey(1)
+
+        # Save the visualization to disk
+        if save_path is not None:
+            cv2.imwrite(save_path, top_down_img)
+
+        return top_down_img
+
+
 class RRTStarSim(RRTStarBase):
     def __init__(
         self,
@@ -470,6 +660,7 @@ class RRTStarSim(RRTStarBase):
         )
 
         self._pathfinder = pathfinder
+        self.pathfinder_type = "habitat_sim"
 
     def _is_navigable(self, pt, max_y_delta=0.5):
         return self._pathfinder.is_navigable(pt.as_pos(), max_y_delta=max_y_delta)
@@ -494,12 +685,11 @@ class RRTStarSim(RRTStarBase):
         return p_new, True
 
     def _sample_random_point(self):
-        return PointHeading(
-            self._pathfinder.get_random_navigable_point()
-        )
+        return PointHeading(self._pathfinder.get_random_navigable_point())
 
     def _snap_point(self, xzy):
         return self._pathfinder.snap_point(xzy)
+
 
 class RRTStarPNG(RRTStarBase):
     def __init__(
@@ -534,6 +724,8 @@ class RRTStarPNG(RRTStarBase):
         self.x_min = 0
         self.y_min = 0
 
+        self.pathfinder_type = "png"
+
     def _is_navigable(self, pt):
         px = self._scale_x(pt.x)
         py = self._scale_x(pt.y)
@@ -555,3 +747,10 @@ class RRTStarPNG(RRTStarBase):
     def _get_shortest_path_points(self):
         # No shortest path can be found for PNG maps
         self._shortest_path_points = []
+
+
+def RRTStar(rrt_star, pathfinder, *args, **kwargs):
+    parent_class = RRTStarSim if type(pathfinder) != str else RRTStarPNG
+    rrt_class = RRTStarMapping[rrt_star](parent_class)
+
+    return rrt_class(pathfinder=pathfinder, *args, **kwargs)

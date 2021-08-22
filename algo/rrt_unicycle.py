@@ -7,42 +7,6 @@ import quaternion as qt
 import habitat_sim
 
 from .utils import PointHeading, heading_to_quaternion, quat_to_rad
-from .rrt_base import RRTStarSim, RRTStarPNG
-
-
-def RRTStarUnicycle(
-    pathfinder,
-    max_linear_velocity,
-    max_angular_velocity,
-    near_threshold,
-    max_distance,
-    critical_angle_lookup,
-    directory,
-):
-    """Creates an instance of the RRTStarU class based on 'pathfinder' param
-
-    :param Any pathfinder: Either a sim.pathfinder or a string (path to an image file)
-    :param float max_linear_velocity: Agent's max linear velocity
-    :param float max_angular_velocity: Agent's max angular velocity
-    :param float near_threshold: How far to look for neighboring points (meters)
-    :param float max_distance: How close far-sampled points will be snapped to the closest point
-    :param dict critical_angle_lookup: Dict containing critical angles if you already have it
-    :param str directory: Where jsons/visualization will be saved
-    :return: RRTStarU instance
-    """
-    if type(pathfinder) != str:
-        rrt_star_unicycle = RRTStarUnicycleSelect(RRTStarSim)
-    else:
-        rrt_star_unicycle = RRTStarUnicycleSelect(RRTStarPNG)
-    return rrt_star_unicycle(
-        pathfinder,
-        max_linear_velocity,
-        max_angular_velocity,
-        near_threshold,
-        max_distance,
-        critical_angle_lookup,
-        directory,
-    )
 
 
 def RRTStarUnicycleSelect(rrt_star_parent):
@@ -196,17 +160,6 @@ def RRTStarUnicycleSelect(rrt_star_parent):
 
             return delta_path_time
 
-        def _cost_from_start(self, pt):
-            path = self._get_path_to_start(pt)
-            cost = 0
-            for parent, child in zip(path[:-1], path[1:]):
-                if child not in self._cost_from_parent:
-                    self._cost_from_parent[child] = self._cost_from_to(
-                        parent, child, consider_end_heading=True
-                    )
-                cost += self._cost_from_parent[child]
-            return cost
-
         def _path_exists(self, a, b):
             try:
                 intermediate_points = self._get_intermediate_pts(a, b, resolution=0.05)
@@ -218,15 +171,6 @@ def RRTStarUnicycleSelect(rrt_star_parent):
                     return False
 
             return True
-
-        def make_path_finer(self, path, precision=2, resolution=0.01):
-            all_pts = []
-            for pt, new_pt in zip(path[:-1], path[1:]):
-                all_pts += self._get_intermediate_pts(
-                    pt, new_pt, precision=precision, resolution=resolution
-                )
-
-            return all_pts
 
         def _get_intermediate_pts(self, pt, new_pt, precision=2, resolution=0.1):
             """
@@ -308,6 +252,10 @@ def RRTStarUnicycleSelect(rrt_star_parent):
                 all_pts.append(end_pt)
 
             return all_pts
+
+        """
+        Visualization methods
+        """
 
         def _visualize_tree(
             self,
