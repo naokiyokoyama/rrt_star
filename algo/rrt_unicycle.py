@@ -1,4 +1,3 @@
-import cv2
 import magnum as mn
 import math
 import numpy as np
@@ -26,6 +25,8 @@ def RRTStarUnicycleSelect(rrt_star_parent):
             max_distance,
             critical_angle_lookup=None,
             directory=None,
+            *args,
+            **kwargs
         ):
             """
 
@@ -44,6 +45,8 @@ def RRTStarUnicycleSelect(rrt_star_parent):
                 near_threshold=near_threshold,
                 max_distance=max_distance,
                 directory=directory,
+                *args,
+                **kwargs
             )
 
             # Needed for calculating at what angles the agent should pivot in-place
@@ -174,7 +177,7 @@ def RRTStarUnicycleSelect(rrt_star_parent):
 
         def _get_intermediate_pts(self, pt, new_pt, precision=2, resolution=0.1):
             """
-            Only return the points between, if there is enough space.
+            Returns points between two waypoints, if there is enough space.
             """
 
             # theta is the angle from pt to new_pt (0 rad is east)
@@ -191,7 +194,7 @@ def RRTStarUnicycleSelect(rrt_star_parent):
 
             """
             theta_arc is the difference between the robot's heading and the destination 
-            when it starts moving in an arc. Formula for arc_length dervied with trigonometry.
+            when it starts moving in an arc. Formula for arc_length derived with trigonometry.
             Using trigonometry, we can also prove that the angle between its final heading 
             and the line connecting the start point with the end point is 2*theta_arc.
             """
@@ -253,145 +256,6 @@ def RRTStarUnicycleSelect(rrt_star_parent):
 
             return all_pts
 
-        """
-        Visualization methods
-        """
-
-        def _visualize_tree(
-            self,
-            meters_per_pixel=0.01,
-            show=False,
-            path=None,  # Option to visualize another path
-            draw_all_edges=True,
-            save_path=None,
-        ):
-            """
-            Save and/or visualize the current tree and the best path found so far
-            """
-            if self._top_down_img is None:
-                self._top_down_img = self.generate_topdown_img(
-                    meters_per_pixel=meters_per_pixel
-                )
-
-                # Crop image to just valid points
-                mask = cv2.cvtColor(self._top_down_img, cv2.COLOR_BGR2GRAY)
-                mask[mask == 255] = 0
-                x, y, w, h = cv2.boundingRect(mask)
-                self._top_down_img = self._top_down_img[y : y + h, x : x + w]
-
-                # Determine scaling needed
-                self._scale_x = lambda x: int((x - self.x_min) / meters_per_pixel)
-                self._scale_y = lambda y: int((y - self.y_min) / meters_per_pixel)
-
-            top_down_img = self._top_down_img.copy()
-
-            # Draw all edges in orange
-            if draw_all_edges:
-                for node, node_parent in self.tree.items():
-                    if node_parent is None:  # Start point has no parent
-                        continue
-                    fine_path = (
-                        [node_parent]
-                        + self._get_intermediate_pts(node_parent, node, resolution=0.01)
-                        + [node]
-                    )
-                    for pt, next_pt in zip(fine_path[:-1], fine_path[1:]):
-                        cv2.line(
-                            top_down_img,
-                            (self._scale_x(pt.x), self._scale_y(pt.y)),
-                            (self._scale_x(next_pt.x), self._scale_y(next_pt.y)),
-                            (0, 102, 255),
-                            1,
-                        )
-
-            # Draw best path to goal if it exists
-            if path is not None or self._best_goal_node is not None:
-                if path is not None:
-                    fine_path = self.make_path_finer(path)
-                else:
-                    fine_path = self.make_path_finer(self._get_best_path())
-                for pt, next_pt in zip(fine_path[:-1], fine_path[1:]):
-                    cv2.line(
-                        top_down_img,
-                        (self._scale_x(pt.x), self._scale_y(pt.y)),
-                        (self._scale_x(next_pt.x), self._scale_y(next_pt.y)),
-                        (0, 255, 0),
-                        3,
-                    )
-
-            # Draw start point+heading in blue
-            start_x, start_y = self._scale_x(self._start.x), self._scale_y(
-                self._start.y
-            )
-            cv2.circle(top_down_img, (start_x, start_y), 8, (255, 192, 15), -1)
-            LINE_SIZE = 10
-            heading_end_pt = (
-                int(start_x + LINE_SIZE * np.cos(self._start.heading)),
-                int(start_y + LINE_SIZE * np.sin(self._start.heading)),
-            )
-            cv2.line(top_down_img, (start_x, start_y), heading_end_pt, (0, 0, 0), 3)
-
-            # Draw goal point in red
-            # cv2.circle(top_down_img, (self._scale_x(self._goal.x),  self._scale_y(self._goal.y)),  8, (0,255,255), -1)
-            SQUARE_SIZE = 6
-            cv2.rectangle(
-                top_down_img,
-                (
-                    self._scale_x(self._goal.x) - SQUARE_SIZE,
-                    self._scale_y(self._goal.y) - SQUARE_SIZE,
-                ),
-                (
-                    self._scale_x(self._goal.x) + SQUARE_SIZE,
-                    self._scale_y(self._goal.y) + SQUARE_SIZE,
-                ),
-                (0, 0, 255),
-                -1,
-            )
-
-            # Draw shortest waypoints
-            if self._shortest_path_points is None:
-                self._get_shortest_path_points()
-            for i in self._shortest_path_points:
-                cv2.circle(
-                    top_down_img,
-                    (self._scale_x(i.x), self._scale_y(i.y)),
-                    3,
-                    (255, 192, 15),
-                    -1,
-                )
-
-            # Draw fastest waypoints
-            if path is None:
-                path = self._get_best_path()[1:-1]
-            for i in path:
-                cv2.circle(
-                    top_down_img,
-                    (self._scale_x(i.x), self._scale_y(i.y)),
-                    3,
-                    (0, 0, 255),
-                    -1,
-                )
-                LINE_SIZE = 8
-                heading_end_pt = (
-                    int(self._scale_x(i.x) + LINE_SIZE * np.cos(i.heading)),
-                    int(self._scale_y(i.y) + LINE_SIZE * np.sin(i.heading)),
-                )
-                cv2.line(
-                    top_down_img,
-                    (self._scale_x(i.x), self._scale_y(i.y)),
-                    heading_end_pt,
-                    (0, 0, 0),
-                    1,
-                )
-
-            if show:
-                cv2.imshow("top_down_img", top_down_img)
-                cv2.waitKey(1)
-
-            if save_path is not None:
-                cv2.imwrite(save_path, top_down_img)
-
-            return top_down_img
 
         def _string_tree(self):
             """

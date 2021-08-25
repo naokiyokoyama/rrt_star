@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import math
 
@@ -44,8 +45,30 @@ def RRTStarPTSelect(rrt_star_parent):
             return delta_path_time
 
         def _path_exists(self, a, b):
-            c = self._pathfinder.try_step_no_sliding(a.as_pos(), b.as_pos())
-            return np.allclose(b.as_pos(), c)
+            if self.pathfinder_type == 'habitat_sim':
+                c = self._pathfinder.try_step_no_sliding(a.as_pos(), b.as_pos())
+
+                return np.allclose(b.as_pos(), c)
+
+            elif self.pathfinder_type == 'png':
+                '''
+                Draw a straight white line on the black-white map.
+                If the resulting map is different, a wall has been crossed.
+                '''
+                map_copy = self._map.copy()
+
+                cv2.line(
+                    map_copy,
+                    (self._scale_x(a.x), self._scale_y(a.y)),
+                    (self._scale_x(b.x), self._scale_y(b.y)),
+                    255, # color (white)
+                    1, # thickness
+                )
+
+                return not np.bitwise_xor(map_copy, self._map.copy()).any()
+
+            else:
+                raise NotImplementedError(f'Pathfinder type {self.pathfinder_type} not supported.')
 
         def _get_intermediate_pts(self, *args, **kwargs):
             # Intermediate points are not necessary for point-turn behavior

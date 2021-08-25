@@ -4,90 +4,117 @@ import habitat_sim
 import json
 import numpy as np
 import quaternion as qt
+from yacs.config import CfgNode as CN
+
+# import yaml
 
 from collections import defaultdict
 from os import path as osp
 
-from algo.rrt_base import RRTStar
 from algo.utils import quat_to_rad
 
+from algo.rrt_base import RRTStar
+
 parser = argparse.ArgumentParser()
-parser.add_argument("json_gz", type=str)
-parser.add_argument("dataset_dir", type=str)
-parser.add_argument("out_dir", type=str)
-parser.add_argument("--max_linear_velocity", type=float, default=0.25)  # in m/s
-parser.add_argument(
-    "--max_angular_velocity", type=float, default=np.pi / 180 * 10
-)  # in rad/s
-parser.add_argument("--goal_minimum_distance", type=float, default=0.2)  # in m
-parser.add_argument("--near_threshold", type=float, default=1.5)  # in m
-parser.add_argument("--max_distance", type=float, default=1.5)  # in m
-parser.add_argument("--visualize_on_screen", action="store_true")
-parser.add_argument("--iterations", type=int, default=5e3)
-parser.add_argument("--visualize_iterations", type=int, default=500)
+parser.add_argument("yaml_file", type=str, help="Path to .yaml file containing parameters")
 args = parser.parse_args()
 
-# Get all unique scene_ids contained in json.gz file
-with gzip.open(args.json_gz, "r") as f:
-    data = f.read()
-data = json.loads(data.decode("utf-8"))
+params = CN()
+params.set_new_allowed(True)
+params.merge_from_file(args.yaml_file)
 
-scene_eps = defaultdict(list)
-for ep in data["episodes"]:
-    scene_eps[ep["scene_id"]].append(ep)
+if params.PNG_FILE == '':
+    # habitat_sim will be used: get all unique scene_ids contained in json.gz file
+    with gzip.open(params.JSON_GZ, "r") as f:
+        data = f.read()
+    data = json.loads(data.decode("utf-8"))
 
-for scene_id, episodes in scene_eps.items():
-    # Generate simulator configuration
-    glb_path = osp.join(args.dataset_dir, scene_id)
-    assert osp.isfile(glb_path), f"{glb_path} does not exist"
+    scene_eps = defaultdict(list)
+    for ep in data["episodes"]:
+        scene_eps[ep["scene_id"]].append(ep)
 
-    backend_cfg = habitat_sim.SimulatorConfiguration()
-    backend_cfg.scene_id = glb_path
+    for scene_id, episodes in scene_eps.items():
+        # Generate simulator configuration
+        glb_path = osp.join(params.SCENES_DIR, scene_id)
+        assert osp.isfile(glb_path), f"{glb_path} does not exist"
 
-    # A camera is needed to enable the renderer that recomputes the navmesh...
-    agent_cfg = habitat_sim.agent.AgentConfiguration()
-    agent_cfg.sensor_specifications = [habitat_sim.CameraSensorSpec()]
+        backend_cfg = habitat_sim.SimulatorConfiguration()
+        backend_cfg.scene_id = glb_path
 
-    cfg = habitat_sim.Configuration(backend_cfg, [agent_cfg])
+        # A camera is needed to enable the renderer that recomputes the navmesh...
+        agent_cfg = habitat_sim.agent.AgentConfiguration()
+        agent_cfg.sensor_specifications = [habitat_sim.CameraSensorSpec()]
 
-    with habitat_sim.Simulator(cfg) as sim:
+        cfg = habitat_sim.Configuration(backend_cfg, [agent_cfg])
 
-        # Compute navmesh
-        navmesh_settings = habitat_sim.NavMeshSettings()
-        navmesh_settings.set_defaults()
-        navmesh_settings.agent_height = 0.88
-        navmesh_settings.agent_radius = 0.18
+        with habitat_sim.Simulator(cfg) as sim:
 
-        sim.recompute_navmesh(sim.pathfinder, navmesh_settings)
+            # Compute navmesh
+            navmesh_settings = habitat_sim.NavMeshSettings()
+            navmesh_settings.set_defaults()
+            navmesh_settings.agent_height = 0.88
+            navmesh_settings.agent_radius = 0.18
 
-        for episode in episodes:
+            sim.recompute_navmesh(sim.pathfinder, navmesh_settings)
 
-            # Get episode params
-            start_position = episode["start_position"]
-            start_quaternion = episode["start_rotation"]
-            scene_name = episode["scene_id"]
-            goal_position = episode["goals"][0]["position"]
+            for episode in episodes:
+                # Skip if this is not the episode we are looking for
+                if params.EPISODE_ID != -1 and episode['episode_id'] != params.EPISODE_ID:
+                    continue
 
-            start_heading = quat_to_rad(qt.quaternion(*start_quaternion))
+                # Get episode params
+                start_position = episode["start_position"]
+                start_quaternion = episode["start_rotation"]
+                scene_name = episode["scene_id"]
+                goal_position = episode["goals"][0]["position"]
 
-            rrt = RRTStar(
-                # 'unicycle',
-                'pointturn',
-                pathfinder=sim.pathfinder,
-                max_linear_velocity=args.max_linear_velocity,
-                max_angular_velocity=args.max_angular_velocity,
-                near_threshold=args.near_threshold,
-                max_distance=args.max_distance,
-                directory=args.out_dir,
-            )
+                start_heading = quat_to_rad(qt.quaternion(*start_quaternion))
 
-            rrt.generate_tree(
-                start_position=start_position,
-                start_heading=start_heading,
-                goal_position=goal_position,
-                iterations=args.iterations,
-                visualize_on_screen=args.visualize_on_screen,
-                visualize_iterations=args.visualize_iterations,
-            )
+                rrt = RRTStar(
+                    rrt_star=params.RRT_TYPE,
+                    pathfinder=sim.pathfinder,
+                    max_linear_velocity=params.MAX_LINEAR_VELOCITY,
+                    max_angular_velocity=np.deg2rad(params.MAX_ANGULAR_VELOCITY),
+                    near_threshold=params.NEAR_THRESHOLD,
+                    max_distance=params.MAX_DISTANCE,
+                    directory=params.OUT_DIR,
+                )
 
-        sim.close()
+                rrt.generate_tree(
+                    start_position=start_position,
+                    start_heading=start_heading,
+                    goal_position=goal_position,
+                    iterations=params.ITERATIONS,
+                    visualize_on_screen=params.VISUALIZE_ON_SCREEN,
+                    visualize_iterations=params.VISUALIZE_ITERATIONS,
+                )
+
+            sim.close()
+else:
+    # PNG file will be used
+
+    start_position, goal_position = [
+        np.array([params[i][0], 0.0, params[i][1]]) * params.METERS_PER_PIXEL
+        for i in ['START_POSITION', 'GOAL_POSITION']
+    ]
+    rrt = RRTStar(
+        rrt_star=params.RRT_TYPE,
+        pathfinder=params.PNG_FILE,
+        agent_radius=params.AGENT_RADIUS,
+        meters_per_pixel=params.METERS_PER_PIXEL,
+        max_linear_velocity=params.MAX_LINEAR_VELOCITY,
+        max_angular_velocity=np.deg2rad(params.MAX_ANGULAR_VELOCITY),
+        near_threshold=params.NEAR_THRESHOLD,
+        max_distance=params.MAX_DISTANCE,
+        directory=params.OUT_DIR,
+    )
+
+    rrt.generate_tree(
+        start_position=start_position,
+        start_heading=np.deg2rad(params.START_HEADING),
+        goal_position=goal_position,
+        iterations=params.ITERATIONS,
+        visualize_on_screen=params.VISUALIZE_ON_SCREEN,
+        visualize_iterations=params.VISUALIZE_ITERATIONS,
+    )
+

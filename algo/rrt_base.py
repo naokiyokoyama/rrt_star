@@ -222,15 +222,6 @@ class RRTStarBase:
         j = int((pt.y - self.y_min) // self._near_threshold)
         self.grid_hash[(i, j)].append(pt)
 
-    def _set_offsets(self):
-        self.x_min, self.y_min = float("inf"), float("inf")
-        for v in self._pathfinder.build_navmesh_vertices():
-            pt = PointHeading(v)
-            # Make sure it's on the same elevation as the start point
-            if abs(pt.z - self._start.z) < 0.8:
-                self.x_min = min(self.x_min, pt.x)
-                self.y_min = min(self.y_min, pt.y)
-
     def _string_tree(self):
         """
         Return the current graph as a dictionary comprised of strings to save
@@ -293,7 +284,6 @@ class RRTStarBase:
         self._goal = PointHeading(goal_position)
         self.tree[self._start] = None
         self._cost_from_parent[self._start] = 0
-        # self.times = defaultdict(list)
 
         self._get_shortest_path_points()
 
@@ -308,7 +298,6 @@ class RRTStarBase:
 
             success = False
             while not success:
-                # time0 = time.time()
                 """
                 Choose random NAVIGABLE point.
                 If a path to the goal is already found, with 80% chance, we sample near that path.
@@ -361,7 +350,6 @@ class RRTStarBase:
                                 found_valid_new_node = True
                         else:
                             found_valid_new_node = True
-                # time1 = time.time()
 
                 # Find valid neighbors
                 nearby_nodes = []
@@ -376,7 +364,6 @@ class RRTStarBase:
                         nearby_nodes.append(pt)
                 if not nearby_nodes:
                     continue
-                # time2 = time.time()
 
                 # Find best parent from valid neighbors
                 min_cost = float("inf")
@@ -393,7 +380,6 @@ class RRTStarBase:
                 # Sometimes there is just one nearby node whose new_cost is NaN. Continue if so.
                 if min_cost == float("inf"):
                     continue
-                # time3 = time.time()
 
                 # Add+connect new node to graph
                 rand_pt.heading = best_final_heading
@@ -454,21 +440,6 @@ class RRTStarBase:
                     string_tree = self._string_tree()
                     with open(json_path, "w") as f:
                         json.dump(string_tree, f)
-                # self.times['time0'].append(time0)
-                # self.times['time1'].append(time1)
-                # self.times['time2'].append(time2)
-                # self.times['time3'].append(time3)
-                # self.times['time4'].append(time4)
-                # self.times['time5'].append(time.time())
-                # if len(self.times['time5']) == 50:
-                #     for idx in range(50):
-                #         avg1 = (self.times['time1'][idx]-self.times['time0'][idx])/(self.times['time5'][idx]-self.times['time0'][idx])
-                #         avg2 = (self.times['time2'][idx]-self.times['time1'][idx])/(self.times['time5'][idx]-self.times['time0'][idx])
-                #         avg3 = (self.times['time3'][idx]-self.times['time2'][idx])/(self.times['time5'][idx]-self.times['time0'][idx])
-                #         avg4 = (self.times['time4'][idx]-self.times['time3'][idx])/(self.times['time5'][idx]-self.times['time0'][idx])
-                #         avg5 = (self.times['time5'][idx]-self.times['time4'][idx])/(self.times['time5'][idx]-self.times['time0'][idx])
-                #     print('{} 1:{} 2:{} 3:{} 4:{} 5:{}'.format(iteration, avg1, avg2, avg3, avg4, avg5))
-                #     self.times = defaultdict(list)
 
                 success = True
 
@@ -690,11 +661,22 @@ class RRTStarSim(RRTStarBase):
     def _snap_point(self, xzy):
         return self._pathfinder.snap_point(xzy)
 
+    def _set_offsets(self):
+        self.x_min, self.y_min = float("inf"), float("inf")
+        for v in self._pathfinder.build_navmesh_vertices():
+            pt = PointHeading(v)
+            # Make sure it's on the same elevation as the start point
+            if abs(pt.z - self._start.z) < 0.8:
+                self.x_min = min(self.x_min, pt.x)
+                self.y_min = min(self.y_min, pt.y)
+
 
 class RRTStarPNG(RRTStarBase):
     def __init__(
         self,
         pathfinder,
+        meters_per_pixel,
+        agent_radius,
         max_linear_velocity,
         max_angular_velocity,
         near_threshold,
@@ -748,9 +730,16 @@ class RRTStarPNG(RRTStarBase):
         # No shortest path can be found for PNG maps
         self._shortest_path_points = []
 
+    def _set_offsets(self):
+        # Not necessary for PNG
+        return
+
 
 def RRTStar(rrt_star, pathfinder, *args, **kwargs):
+    # Determine whether to inherit from habitat_sim-based RRTStar of png-based
     parent_class = RRTStarSim if type(pathfinder) != str else RRTStarPNG
+
+    # Choose which RRTStar class to use and have it inherit from parent_class
     rrt_class = RRTStarMapping[rrt_star](parent_class)
 
     return rrt_class(pathfinder=pathfinder, *args, **kwargs)

@@ -1,0 +1,31 @@
+# One of ['unicycle', 'pointturn']
+RRT_TYPE: 'unicycle'
+
+# Path to png file representing 2D map. White pixels are navigable, gray/black are not.
+# A path of '' indicates that habitat_sim will be used instead.
+PNG_FILE: 'maps/example_map.png'
+METERS_PER_PIXEL: 0.008333333333
+START_POSITION: [100.0, 150.0] # in pixels (x, y), where (0, 0) is the top left corner
+START_HEADING: 0.0 # in degrees, where 0 is north and 90 is east
+GOAL_POSITION: [100.0, 590.0] # in pixels (x, y), where (0, 0) is the top left corner
+
+# Where visualizations and json files (where trees are stored) are saved
+OUT_DIR: 'example_map'
+
+# Radius of the agent, which will shrink the navigable space
+# Note: Agent is assumed to be cylindrical
+AGENT_RADIUS: 0.2
+
+MAX_LINEAR_VELOCITY: 0.25 # in meters per second
+MAX_ANGULAR_VELOCITY: 30.0 # in degrees per second
+NEAR_THRESHOLD: 1.5 # in meters
+MAX_DISTANCE: 1.5 # in meters
+
+# Whether to show the visualizations using cv2.imshow
+VISUALIZE_ON_SCREEN: False
+
+# Number of nodes to generate for tree
+ITERATIONS: 5e3
+
+# How often jsons/visualizations should be saved
+VISUALIZE_ITERATIONS: 500
