@@ -17,11 +17,23 @@ from algo.rrt_base import RRTStar
 
 parser = argparse.ArgumentParser()
 parser.add_argument("yaml_file", type=str, help="Path to .yaml file containing parameters")
+parser.add_argument(
+    "opts",
+    default=None,
+    nargs=argparse.REMAINDER,
+    help="Modify config options from command line",
+)
 args = parser.parse_args()
 
 params = CN()
 params.set_new_allowed(True)
 params.merge_from_file(args.yaml_file)
+
+# Add config options to override if supplied
+if args.opts:
+    for k, v in zip(args.opts[0::2], args.opts[1::2]):
+        assert k in params, f'{k} is not a valid parameter, cannot override.'
+        params[k] = v
 
 if params.PNG_FILE == '':
     # habitat_sim will be used: get all unique scene_ids contained in json.gz file
@@ -92,6 +104,7 @@ if params.PNG_FILE == '':
             sim.close()
 else:
     # PNG file will be used
+    assert osp.isfile(params.PNG_FILE), f"'{params.PNG_FILE}' does not exist!"
 
     start_position, goal_position = [
         np.array([params[i][0], 0.0, params[i][1]]) * params.METERS_PER_PIXEL
