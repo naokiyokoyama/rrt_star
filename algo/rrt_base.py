@@ -19,6 +19,14 @@ RRTStarMapping = {
     "pointturn": RRTStarPTSelect,
 }
 
+def RRTStar(params, pathfinder, *args, **kwargs):
+    # Determine whether to inherit from habitat_sim-based RRTStar of png-based
+    parent_class = RRTStarSim if type(pathfinder) != str else RRTStarPNG
+
+    # Choose which RRTStar class to use and have it inherit from parent_class
+    rrt_class = RRTStarMapping[params.RRT_TYPE](parent_class)
+
+    return rrt_class(params, pathfinder, *args, **kwargs)
 
 class RRTStarBase:
     def __init__(
@@ -59,12 +67,7 @@ class RRTStarBase:
         self.x_min, self.y_min = None, None
 
     def _get_heading_error(self, source, target):
-        diff = target - source
-        if diff > np.pi:
-            diff -= np.pi * 2
-        elif diff < -np.pi:
-            diff += np.pi * 2
-        return diff
+        return self._validate_heading(target - source)
 
     def _get_path_to_start(self, pt):
         path = [pt]
@@ -87,6 +90,14 @@ class RRTStarBase:
         p_new = PointHeading((new_x, new_z, new_y))  # MAY RETURN non navigable point
 
         return p_new, True
+
+    def _validate_heading(self, heading):
+        if heading > np.pi:
+            heading -= np.pi * 2
+        elif heading < -np.pi:
+            heading += np.pi * 2
+
+        return heading
 
     def _get_near_pts(self, pt):
         ret = []
@@ -613,21 +624,13 @@ class RRTStarBase:
 
 
 class RRTStarSim(RRTStarBase):
-    def __init__(
-        self,
-        pathfinder,
-        max_linear_velocity,
-        max_angular_velocity,
-        near_threshold,
-        max_distance,
-        directory=None,
-    ):
+    def __init__(self, params, pathfinder):
         super().__init__(
-            max_linear_velocity=max_linear_velocity,
-            max_angular_velocity=max_angular_velocity,
-            near_threshold=near_threshold,
-            max_distance=max_distance,
-            directory=directory,
+            max_linear_velocity=params.MAX_LINEAR_VELOCITY,
+            max_angular_velocity=np.deg2rad(params.MAX_ANGULAR_VELOCITY),
+            near_threshold=params.NEAR_THRESHOLD,
+            max_distance=params.MAX_DISTANCE,
+            directory=params.OUT_DIR,
         )
 
         self._pathfinder = pathfinder
@@ -672,30 +675,21 @@ class RRTStarSim(RRTStarBase):
 
 
 class RRTStarPNG(RRTStarBase):
-    def __init__(
-        self,
-        pathfinder,
-        meters_per_pixel,
-        agent_radius,
-        max_linear_velocity,
-        max_angular_velocity,
-        near_threshold,
-        max_distance,
-        directory=None,
-    ):
+    def __init__(self, params, pathfinder):
         super().__init__(
-            max_linear_velocity=max_linear_velocity,
-            max_angular_velocity=max_angular_velocity,
-            near_threshold=near_threshold,
-            max_distance=max_distance,
-            directory=directory,
+            max_linear_velocity=params.MAX_LINEAR_VELOCITY,
+            max_angular_velocity=np.deg2rad(params.MAX_ANGULAR_VELOCITY),
+            near_threshold=params.NEAR_THRESHOLD,
+            max_distance=params.MAX_DISTANCE,
+            directory=params.OUT_DIR,
         )
 
         img = cv2.imread(pathfinder, cv2.IMREAD_UNCHANGED)
+        meters_per_pixel = params.METERS_PER_PIXEL
         self._map = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
         self._map[self._map > 240] = 255
         self._map[self._map <= 240] = 0
-        blur_radius = int(round(agent_radius / meters_per_pixel))
+        blur_radius = int(round(params.AGENT_RADIUS / meters_per_pixel))
         self._map = cv2.blur(self._map, (blur_radius, blur_radius))
         self._map_height = float(img.shape[0]) * meters_per_pixel
         self._map_width = float(img.shape[1]) * meters_per_pixel
@@ -733,13 +727,3 @@ class RRTStarPNG(RRTStarBase):
     def _set_offsets(self):
         # Not necessary for PNG
         return
-
-
-def RRTStar(rrt_star, pathfinder, *args, **kwargs):
-    # Determine whether to inherit from habitat_sim-based RRTStar of png-based
-    parent_class = RRTStarSim if type(pathfinder) != str else RRTStarPNG
-
-    # Choose which RRTStar class to use and have it inherit from parent_class
-    rrt_class = RRTStarMapping[rrt_star](parent_class)
-
-    return rrt_class(pathfinder=pathfinder, *args, **kwargs)

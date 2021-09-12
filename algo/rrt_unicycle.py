@@ -18,15 +18,9 @@ def RRTStarUnicycleSelect(rrt_star_parent):
     class RRTStarU(rrt_star_parent):
         def __init__(
             self,
+            params,
             pathfinder,
-            max_linear_velocity,
-            max_angular_velocity,
-            near_threshold,
-            max_distance,
             critical_angle_lookup=None,
-            directory=None,
-            *args,
-            **kwargs
         ):
             """
 
@@ -38,16 +32,7 @@ def RRTStarUnicycleSelect(rrt_star_parent):
             :param dict critical_angle_lookup: Dict containing critical angles if you already have it
             :param str directory: Where jsons/visualization will be saved
             """
-            super().__init__(
-                pathfinder=pathfinder,
-                max_linear_velocity=max_linear_velocity,
-                max_angular_velocity=max_angular_velocity,
-                near_threshold=near_threshold,
-                max_distance=max_distance,
-                directory=directory,
-                *args,
-                **kwargs
-            )
+            super().__init__(params, pathfinder)
 
             # Needed for calculating at what angles the agent should pivot in-place
             # vs. arc toward the next waypoint
@@ -55,6 +40,8 @@ def RRTStarUnicycleSelect(rrt_star_parent):
                 self._critical_angle_lookup = self._generate_critical_angle_lookup()
             else:
                 self._critical_angle_lookup = critical_angle_lookup
+
+            self.backwards = params.BACKWARDS_ALLOWED
 
             # Needed for calculating next waypoints from velocities
             self.vel_control = habitat_sim.physics.VelocityControl()
@@ -132,12 +119,31 @@ def RRTStarUnicycleSelect(rrt_star_parent):
             return delta_heading, delta_path_time
 
         def _cost_from_to(
-            self, pt, new_pt, return_heading=False, consider_end_heading=False
+            self,
+            pt,
+            new_pt,
+            return_heading=False,
+            consider_end_heading=False,
+            just_indicate_backwards=False,
         ):
             # theta is the angle from pt to new_pt (0 rad is east)
             theta = math.atan2((new_pt.y - pt.y), new_pt.x - pt.x)
             # theta_diff is angle between the robot's heading at pt to new_pt
             theta_diff = self._get_heading_error(pt.heading, theta)
+
+            # Use backwards motion if faster
+            if self.backwards:
+                back_heading = self._validate_heading(pt.heading - np.pi)
+                theta_diff_back = self._get_heading_error(back_heading, theta)
+                if abs(theta_diff_back) < abs(theta_diff):
+                    theta_diff = theta_diff_back
+                    backwards = True
+                else:
+                    backwards = False
+
+                if just_indicate_backwards:
+                    return backwards
+
             euclid_dist = self._euclid_2D(pt, new_pt)
 
             delta_heading, delta_path_time = self._fastest_delta_heading_time(
@@ -149,10 +155,7 @@ def RRTStarUnicycleSelect(rrt_star_parent):
                     final_heading = pt.heading - delta_heading
                 else:
                     final_heading = pt.heading + delta_heading
-                if final_heading > np.pi:
-                    final_heading -= np.pi * 2
-                elif final_heading < -np.pi:
-                    final_heading += np.pi * 2
+                final_heading = self._validate_heading(final_heading)
                 if consider_end_heading:
                     delta_path_time += abs(
                         self._get_heading_error(new_pt.heading, final_heading)
@@ -179,11 +182,20 @@ def RRTStarUnicycleSelect(rrt_star_parent):
             """
             Returns points between two waypoints, if there is enough space.
             """
+            if (
+                self.backwards
+                and self._cost_from_to(
+                    pt, new_pt, just_indicate_backwards=True
+                )
+            ):
+                pt_heading = self._validate_heading(pt.heading - np.pi)
+            else:
+                pt_heading = pt.heading
 
             # theta is the angle from pt to new_pt (0 rad is east)
             theta = math.atan2((new_pt.y - pt.y), new_pt.x - pt.x)
             # theta becomes the angle between the robot's heading at pt to new_pt
-            theta_diff = self._get_heading_error(pt.heading, theta)
+            theta_diff = self._get_heading_error(pt_heading, theta)
             theta = abs(theta_diff)
             euclid_dist = self._euclid_2D(pt, new_pt)
 
@@ -203,10 +215,10 @@ def RRTStarUnicycleSelect(rrt_star_parent):
                 arc_length = euclid_dist
             else:
                 arc_length = (
-                    np.sqrt(2)
-                    * euclid_dist
-                    * theta_arc
-                    / np.sqrt(1 - np.cos(2 * theta_arc))
+                        np.sqrt(2)
+                        * euclid_dist
+                        * theta_arc
+                        / np.sqrt(1 - np.cos(2 * theta_arc))
                 )
             arc_time = arc_length / self._max_linear_velocity
             arc_angular_vel = theta_arc * 2 / arc_time
@@ -223,7 +235,7 @@ def RRTStarUnicycleSelect(rrt_star_parent):
             when pivoting. Get the pivoting out of the way by simple addition.
             """
             pt_pos = pt.as_pos()
-            pt_quaternion = heading_to_quaternion(pt.heading + theta_pivot)
+            pt_quaternion = heading_to_quaternion(pt_heading + theta_pivot)
             rigid_state = habitat_sim.bindings.RigidState(pt_quaternion, pt_pos)
             self.vel_control.linear_velocity = np.array(
                 [0.0, 0.0, -self._max_linear_velocity]
@@ -255,7 +267,6 @@ def RRTStarUnicycleSelect(rrt_star_parent):
                 all_pts.append(end_pt)
 
             return all_pts
-
 
         def _string_tree(self):
             """

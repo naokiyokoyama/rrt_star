@@ -6,8 +6,6 @@ import numpy as np
 import quaternion as qt
 from yacs.config import CfgNode as CN
 
-# import yaml
-
 from collections import defaultdict
 from os import path as osp
 
@@ -82,16 +80,7 @@ if params.PNG_FILE == '':
 
                 start_heading = quat_to_rad(qt.quaternion(*start_quaternion))
 
-                rrt = RRTStar(
-                    rrt_star=params.RRT_TYPE,
-                    pathfinder=sim.pathfinder,
-                    max_linear_velocity=params.MAX_LINEAR_VELOCITY,
-                    max_angular_velocity=np.deg2rad(params.MAX_ANGULAR_VELOCITY),
-                    near_threshold=params.NEAR_THRESHOLD,
-                    max_distance=params.MAX_DISTANCE,
-                    directory=params.OUT_DIR,
-                )
-
+                rrt = RRTStar(params, pathfinder=sim.pathfinder)
                 rrt.generate_tree(
                     start_position=start_position,
                     start_heading=start_heading,
@@ -110,18 +99,8 @@ else:
         np.array([params[i][0], 0.0, params[i][1]]) * params.METERS_PER_PIXEL
         for i in ['START_POSITION', 'GOAL_POSITION']
     ]
-    rrt = RRTStar(
-        rrt_star=params.RRT_TYPE,
-        pathfinder=params.PNG_FILE,
-        agent_radius=params.AGENT_RADIUS,
-        meters_per_pixel=params.METERS_PER_PIXEL,
-        max_linear_velocity=params.MAX_LINEAR_VELOCITY,
-        max_angular_velocity=np.deg2rad(params.MAX_ANGULAR_VELOCITY),
-        near_threshold=params.NEAR_THRESHOLD,
-        max_distance=params.MAX_DISTANCE,
-        directory=params.OUT_DIR,
-    )
 
+    rrt = RRTStar(params, pathfinder=params.PNG_FILE)
     rrt.generate_tree(
         start_position=start_position,
         start_heading=np.deg2rad(params.START_HEADING),
