@@ -26,10 +26,10 @@ If you use this code in your research, please cite the following [paper](https:/
 
 ## Installation
 
-You must have habitat_sim installed to use this repo. Repo with installation instructions is located 
+If you want to use the unicycle dynamics model or use a navmesh (vs. a PNG file), you need to install habitat-sim. If you just want to use the PNG method and the point-turn model, you don't need to install it. Repo with installation instructions is located 
 [here](https://github.com/facebookresearch/habitat-sim/). The use of conda is strongly suggested.
 
-You will also need to install OpenCV and yacs:
+You will need to install OpenCV and yacs:
 ```bash
 pip install opencv-python yacs
 ```
