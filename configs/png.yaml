@@ -1,13 +1,13 @@
-# One of ['unicycle', 'pointturn']
+# One of ['unicycle', 'pointturn', 'shortest']
 RRT_TYPE: 'unicycle'
 
 # Path to png file representing 2D map. White pixels are navigable, gray/black are not.
 # A path of '' indicates that habitat_sim will be used instead.
 PNG_FILE: 'maps/example_map.png'
 METERS_PER_PIXEL: 0.008333333333
-START_POSITION: [100.0, 150.0] # in pixels (x, y), where (0, 0) is the top left corner
+START_POSITION: [100, 150] # in pixels (x, y), where (0, 0) is the top left corner
 START_HEADING: 0.0 # in degrees, where 0 is north and 90 is east
-GOAL_POSITION: [100.0, 590.0] # in pixels (x, y), where (0, 0) is the top left corner
+GOAL_POSITION: [100, 590] # in pixels (x, y), where (0, 0) is the top left corner
 
 # Where visualizations and json files (where trees are stored) are saved
 OUT_DIR: 'example_map'

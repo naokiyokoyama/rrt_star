@@ -1,4 +1,4 @@
-# One of ['unicycle', 'pointturn']
+# One of ['unicycle', 'pointturn', 'shortest']
 RRT_TYPE: 'unicycle'
 
 # Path to png file representing 2D map. White pixels are navigable, gray/black are not.

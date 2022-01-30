@@ -1,8 +1,8 @@
-import magnum as mn
 import numpy as np
 import quaternion as qt
 
 try:
+    import magnum as mn
     from habitat_sim.utils.common import quat_rotate_vector
 except:
     pass  # allow habitat_sim to not be installed

@@ -29,9 +29,9 @@ If you use this code in your research, please cite the following [paper](https:/
 If you want to use the unicycle dynamics model or use a navmesh (vs. a PNG file), you need to install habitat-sim. If you just want to use the PNG method and the point-turn model, you don't need to install it. Repo with installation instructions is located 
 [here](https://github.com/facebookresearch/habitat-sim/). The use of conda is strongly suggested.
 
-You will need to install OpenCV and yacs:
+You will need to install the following packages:
 ```bash
-pip install opencv-python yacs
+pip install numpy numpy-quaternion yacs opencv-python tqdm
 ```
 
 ## Running the scripts

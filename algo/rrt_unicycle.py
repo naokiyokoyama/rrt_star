@@ -1,11 +1,11 @@
 import math
 
-import magnum as mn
 import numpy as np
 import quaternion as qt
 
 try:
     import habitat_sim
+    import magnum as mn
 except:
     pass  # allow habitat_sim to not be installed
 

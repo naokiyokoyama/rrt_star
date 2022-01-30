@@ -36,7 +36,9 @@ params.merge_from_file(args.yaml_file)
 if args.opts:
     for k, v in zip(args.opts[0::2], args.opts[1::2]):
         assert k in params, f"{k} is not a valid parameter, cannot override."
-        params[k] = v
+    params.merge_from_list(args.opts)
+
+print("Saving outputs to:", params.OUT_DIR)
 
 if params.PNG_FILE == "":
     # habitat_sim will be used: get all unique scene_ids contained in json.gz file
@@ -68,7 +70,7 @@ if params.PNG_FILE == "":
             navmesh_settings = habitat_sim.NavMeshSettings()
             navmesh_settings.set_defaults()
             navmesh_settings.agent_height = 0.88
-            navmesh_settings.agent_radius = 0.18
+            navmesh_settings.agent_radius = params.AGENT_RADIUS
 
             sim.recompute_navmesh(sim.pathfinder, navmesh_settings)
 

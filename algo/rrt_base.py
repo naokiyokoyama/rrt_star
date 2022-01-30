@@ -10,6 +10,7 @@ import numpy as np
 import tqdm
 
 from .rrt_pointturn import RRTStarPTSelect
+from .rrt_shortest import RRTStarShortestSelect
 from .rrt_unicycle import RRTStarUnicycleSelect
 from .utils import PointHeading
 
@@ -21,6 +22,7 @@ except:
 RRTStarMapping = {
     "unicycle": RRTStarUnicycleSelect,
     "pointturn": RRTStarPTSelect,
+    "shortest": RRTStarShortestSelect,
 }
 
 
@@ -29,12 +31,17 @@ def RRTStar(params, pathfinder, *args, **kwargs):
     parent_class = RRTStarSim if type(pathfinder) != str else RRTStarPNG
 
     # Choose which RRTStar class to use and have it inherit from parent_class
+    if params.RRT_TYPE == "shortest":
+        parent_class = RRTStarPTSelect(parent_class)
     rrt_class = RRTStarMapping[params.RRT_TYPE](parent_class)
 
     return rrt_class(params, pathfinder, *args, **kwargs)
 
 
 class RRTStarBase:
+    cost_key = "best_path_time"
+    cost_units = "seconds"
+
     def __init__(
         self,
         max_linear_velocity,
@@ -258,12 +265,12 @@ class RRTStarBase:
 
         if self._best_goal_node is not None:
             string_tree["best_goal_node"] = self._best_goal_node._str_key()
-            string_tree["best_path_time"] = self._cost_from_start(
+            string_tree[self.cost_key] = self._cost_from_start(
                 self._best_goal_node
             ) + self._cost_from_to(self._best_goal_node, self._goal)
         else:
             string_tree["best_goal_node"] = ""
-            string_tree["best_path_time"] = -1
+            string_tree[self.cost_key] = -1
 
         # Add the best path
         string_tree["best_path_raw"] = [i._str_key() for i in self._get_best_path()]
@@ -455,6 +462,11 @@ class RRTStarBase:
                     )
                     self._visualize_tree(save_path=img_path, show=visualize_on_screen)
                     string_tree = self._string_tree()
+                    print(
+                        "Best current cost:",
+                        string_tree[self.cost_key],
+                        self.cost_units,
+                    )
                     with open(json_path, "w") as f:
                         json.dump(string_tree, f)
 
