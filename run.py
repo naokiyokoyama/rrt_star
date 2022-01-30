@@ -1,20 +1,25 @@
 import argparse
 import gzip
-import habitat_sim
 import json
+from collections import defaultdict
+from os import path as osp
+
+try:
+    import habitat_sim
+except:
+    pass  # allow habitat_sim to not be installed
+
 import numpy as np
 import quaternion as qt
 from yacs.config import CfgNode as CN
 
-from collections import defaultdict
-from os import path as osp
-
+from algo.rrt_base import RRTStar
 from algo.utils import quat_to_rad
 
-from algo.rrt_base import RRTStar
-
 parser = argparse.ArgumentParser()
-parser.add_argument("yaml_file", type=str, help="Path to .yaml file containing parameters")
+parser.add_argument(
+    "yaml_file", type=str, help="Path to .yaml file containing parameters"
+)
 parser.add_argument(
     "opts",
     default=None,
@@ -30,10 +35,10 @@ params.merge_from_file(args.yaml_file)
 # Add config options to override if supplied
 if args.opts:
     for k, v in zip(args.opts[0::2], args.opts[1::2]):
-        assert k in params, f'{k} is not a valid parameter, cannot override.'
+        assert k in params, f"{k} is not a valid parameter, cannot override."
         params[k] = v
 
-if params.PNG_FILE == '':
+if params.PNG_FILE == "":
     # habitat_sim will be used: get all unique scene_ids contained in json.gz file
     with gzip.open(params.JSON_GZ, "r") as f:
         data = f.read()
@@ -69,7 +74,10 @@ if params.PNG_FILE == '':
 
             for episode in episodes:
                 # Skip if this is not the episode we are looking for
-                if params.EPISODE_ID != -1 and episode['episode_id'] != params.EPISODE_ID:
+                if (
+                    params.EPISODE_ID != -1
+                    and episode["episode_id"] != params.EPISODE_ID
+                ):
                     continue
 
                 # Get episode params
@@ -97,7 +105,7 @@ else:
 
     start_position, goal_position = [
         np.array([params[i][0], 0.0, params[i][1]]) * params.METERS_PER_PIXEL
-        for i in ['START_POSITION', 'GOAL_POSITION']
+        for i in ["START_POSITION", "GOAL_POSITION"]
     ]
 
     rrt = RRTStar(params, pathfinder=params.PNG_FILE)
@@ -109,4 +117,3 @@ else:
         visualize_on_screen=params.VISUALIZE_ON_SCREEN,
         visualize_iterations=params.VISUALIZE_ITERATIONS,
     )
-

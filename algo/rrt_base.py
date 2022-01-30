@@ -1,23 +1,28 @@
-from os import path as osp
-import os
-import cv2
 import glob
 import json
-import numpy as np
+import os
 import random
-import tqdm
 from collections import defaultdict
+from os import path as osp
 
-from .rrt_unicycle import RRTStarUnicycleSelect
+import cv2
+import numpy as np
+import tqdm
+
 from .rrt_pointturn import RRTStarPTSelect
+from .rrt_unicycle import RRTStarUnicycleSelect
 from .utils import PointHeading
 
-from habitat_sim.nav import ShortestPath
+try:
+    from habitat_sim.nav import ShortestPath
+except:
+    pass  # allow habitat_sim to not be installed
 
 RRTStarMapping = {
     "unicycle": RRTStarUnicycleSelect,
     "pointturn": RRTStarPTSelect,
 }
+
 
 def RRTStar(params, pathfinder, *args, **kwargs):
     # Determine whether to inherit from habitat_sim-based RRTStar of png-based
@@ -27,6 +32,7 @@ def RRTStar(params, pathfinder, *args, **kwargs):
     rrt_class = RRTStarMapping[params.RRT_TYPE](parent_class)
 
     return rrt_class(params, pathfinder, *args, **kwargs)
+
 
 class RRTStarBase:
     def __init__(

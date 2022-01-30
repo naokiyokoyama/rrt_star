@@ -1,9 +1,13 @@
-import magnum as mn
 import math
+
+import magnum as mn
 import numpy as np
 import quaternion as qt
 
-import habitat_sim
+try:
+    import habitat_sim
+except:
+    pass  # allow habitat_sim to not be installed
 
 from .utils import PointHeading, heading_to_quaternion, quat_to_rad
 
@@ -182,11 +186,8 @@ def RRTStarUnicycleSelect(rrt_star_parent):
             """
             Returns points between two waypoints, if there is enough space.
             """
-            if (
-                self.backwards
-                and self._cost_from_to(
-                    pt, new_pt, just_indicate_backwards=True
-                )
+            if self.backwards and self._cost_from_to(
+                pt, new_pt, just_indicate_backwards=True
             ):
                 pt_heading = self._validate_heading(pt.heading - np.pi)
             else:
@@ -215,10 +216,10 @@ def RRTStarUnicycleSelect(rrt_star_parent):
                 arc_length = euclid_dist
             else:
                 arc_length = (
-                        np.sqrt(2)
-                        * euclid_dist
-                        * theta_arc
-                        / np.sqrt(1 - np.cos(2 * theta_arc))
+                    np.sqrt(2)
+                    * euclid_dist
+                    * theta_arc
+                    / np.sqrt(1 - np.cos(2 * theta_arc))
                 )
             arc_time = arc_length / self._max_linear_velocity
             arc_angular_vel = theta_arc * 2 / arc_time
